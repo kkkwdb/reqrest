@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,9 +15,22 @@ import (
 	"github.com/urfave/cli"
 )
 
+const queryTemplate = `{
+    "query": {
+        
+    }
+}
+`
+
+const jsonTemplate = `{ 
+    
+}
+`
+
 const (
-	CONTENT_TYPE_JSON = "application/json"
-	CONTENT_EDITOR    = "vim"
+	CONTENT_TYPE_JSON    = "application/json"
+	CONTENT_QUERY_EDITOR = "vim +3 +'normal $' +startinsert"
+	CONTENT_EDITOR       = "vim +2 +'normal $' +startinsert"
 )
 
 const (
@@ -26,10 +40,14 @@ const (
 	METHOD_POST
 )
 
-func getContent(contentEditor string) (string, error) {
+func getContent(templete, contentEditor string) (string, error) {
 	var stderr bytes.Buffer
 
 	tmpfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		return "", err
+	}
+	_, err = io.WriteString(tmpfile, templete)
 	if err != nil {
 		return "", err
 	}
@@ -63,7 +81,11 @@ func getContent(contentEditor string) (string, error) {
 }
 
 func doRestRequest(url, method, contentType, contentEditor string) (string, map[string][]string, []byte, error) {
-	filename, err := getContent(contentEditor)
+	templete := jsonTemplate
+	if contentEditor == CONTENT_QUERY_EDITOR {
+		templete = queryTemplate
+	}
+	filename, err := getContent(templete, contentEditor)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -181,15 +203,25 @@ func main() {
 		{
 			Name:  "get",
 			Usage: "request with GET method",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "query, q",
+					Usage: "Send query request",
+				},
+			},
 			Action: func(c *cli.Context) error {
-				return doSubCmd(c, http.MethodGet, c.GlobalString("editor"))
+				editor := c.GlobalString("editor")
+				if c.Bool("query") && editor == "" {
+					editor = CONTENT_QUERY_EDITOR
+				}
+				return doSubCmd(c, http.MethodGet, editor)
 			},
 		},
 		{
 			Name:  "post",
 			Usage: "request with POST method",
 			Action: func(c *cli.Context) error {
-				editor := "vim"
+				editor := CONTENT_EDITOR
 				if len(c.GlobalString("editor")) != 0 {
 					editor = c.GlobalString("editor")
 				}
@@ -200,7 +232,7 @@ func main() {
 			Name:  "put",
 			Usage: "request with PUT method",
 			Action: func(c *cli.Context) error {
-				editor := "vim"
+				editor := CONTENT_EDITOR
 				if len(c.GlobalString("editor")) != 0 {
 					editor = c.GlobalString("editor")
 				}
