@@ -268,6 +268,9 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) error {
+		if len(os.Args) < 2 {
+			return cli.ShowAppHelp(c)
+		}
 		args := make([]string, 1+len(os.Args))
 		args[0] = os.Args[0]
 		args[1] = "get"
