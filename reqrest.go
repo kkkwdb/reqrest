@@ -40,7 +40,7 @@ const (
 	METHOD_POST
 )
 
-func getContent(templete, contentEditor string) (string, error) {
+func getContent(inputfile, templete, contentEditor string) (string, error) {
 	var stderr bytes.Buffer
 
 	tmpfile, err := ioutil.TempFile("", "")
@@ -80,16 +80,20 @@ func getContent(templete, contentEditor string) (string, error) {
 	return filename, nil
 }
 
-func doRestRequest(url, method, contentType, contentEditor string) (string, map[string][]string, []byte, error) {
-	templete := jsonTemplate
-	if contentEditor == CONTENT_QUERY_EDITOR {
-		templete = queryTemplate
+func doRestRequest(url, method, contentType, inputfile, contentEditor string) (string, map[string][]string, []byte, error) {
+	var err error
+	filename := inputfile
+	if len(filename) == 0 {
+		templete := jsonTemplate
+		if contentEditor == CONTENT_QUERY_EDITOR {
+			templete = queryTemplate
+		}
+		filename, err = getContent(inputfile, templete, contentEditor)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		defer os.Remove(filename)
 	}
-	filename, err := getContent(templete, contentEditor)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	defer os.Remove(filename)
 
 	c, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -159,7 +163,7 @@ func doSubCmd(c *cli.Context, method, editor string) error {
 	if strings.Index(url, "http://") != 0 {
 		url = "http://" + url
 	}
-	status, headers, content, err := doRestRequest(url, method, CONTENT_TYPE_JSON, editor)
+	status, headers, content, err := doRestRequest(url, method, CONTENT_TYPE_JSON, c.GlobalString("file"), editor)
 	if err != nil {
 		return err
 	}
@@ -184,6 +188,10 @@ func main() {
 			Name:   "editor, e",
 			Usage:  "Use `EDITOR` to edit input content",
 			EnvVar: "REQREST_EDITOR",
+		},
+		cli.StringFlag{
+			Name:  "file, f",
+			Usage: "Input the `FILE` content",
 		},
 		cli.BoolFlag{
 			Name:  "pretty, p",
@@ -249,6 +257,13 @@ func main() {
 	}
 
 	app.Before = func(c *cli.Context) error {
+		file := c.GlobalString("file")
+		if len(file) != 0 {
+			_, err := os.Stat(file)
+			if err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
