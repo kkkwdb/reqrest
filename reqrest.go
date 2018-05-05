@@ -47,6 +47,10 @@ func getContent(inputfile, templete, contentEditor string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if len(templete) == 0 {
+		err = tmpfile.Close()
+		return tmpfile.Name(), err
+	}
 	_, err = io.WriteString(tmpfile, templete)
 	if err != nil {
 		return "", err
@@ -57,10 +61,6 @@ func getContent(inputfile, templete, contentEditor string) (string, error) {
 	}
 	filename := tmpfile.Name() + ".json"
 	os.Rename(tmpfile.Name(), filename)
-
-	if contentEditor == "" {
-		return filename, nil
-	}
 
 	cmd := exec.Cmd{
 		Path:   "/bin/sh",
@@ -73,18 +73,18 @@ func getContent(inputfile, templete, contentEditor string) (string, error) {
 		return "", err
 	}
 	err = cmd.Wait()
-	if err != nil {
-		return "", fmt.Errorf("error run Editor(%s), stderr: %s", contentEditor, stderr.String())
-	}
 
-	return filename, nil
+	return filename, err
 }
 
 func doRestRequest(url, method, contentType, inputfile, contentEditor string) (string, map[string][]string, []byte, error) {
 	var err error
 	filename := inputfile
 	if len(filename) == 0 {
-		templete := jsonTemplate
+		templete := ""
+		if len(contentEditor) != 0 && contentEditor != "no" {
+			templete = jsonTemplate
+		}
 		if contentEditor == CONTENT_QUERY_EDITOR {
 			templete = queryTemplate
 		}
@@ -98,6 +98,9 @@ func doRestRequest(url, method, contentType, inputfile, contentEditor string) (s
 	c, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return "", nil, nil, err
+	}
+	if len(c) == 0 {
+		c = []byte(contentEditor)
 	}
 
 	compact := new(bytes.Buffer)
@@ -163,10 +166,17 @@ func doSubCmd(c *cli.Context, method, editor string) error {
 	if strings.Index(url, "http://") != 0 {
 		url = "http://" + url
 	}
-	status, headers, content, err := doRestRequest(url, method, CONTENT_TYPE_JSON, c.GlobalString("file"), editor)
+
+	contentFile := c.GlobalString("file")
+	if len(c.GlobalString("content")) != 0 {
+		contentFile = "/dev/null"
+		editor = c.GlobalString("content")
+	}
+	status, headers, content, err := doRestRequest(url, method, CONTENT_TYPE_JSON, contentFile, editor)
 	if err != nil {
 		return err
 	}
+
 	if c.GlobalBool("slient") {
 		return nil
 	}
@@ -190,8 +200,12 @@ func main() {
 			EnvVar: "REQREST_EDITOR",
 		},
 		cli.StringFlag{
+			Name:  "content, c",
+			Usage: "Input the content",
+		},
+		cli.StringFlag{
 			Name:  "file, f",
-			Usage: "Input the `FILE` content",
+			Usage: "Read content form  `FILE`",
 		},
 		cli.BoolFlag{
 			Name:  "pretty, p",
